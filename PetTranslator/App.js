@@ -3,26 +3,25 @@ import { StatusBar } from 'expo-status-bar';
 import { Button, StyleSheet, Text, View, Animated, Pressable } from 'react-native';
 import { Audio } from 'expo-av';
 import { LinearGradient } from 'expo-linear-gradient';
-import { HfInference } from "@huggingface/inference";
 import * as FileSystem from 'expo-file-system';
+import { speechToText, speechAnaylsisAndTranslation } from './utils.js'
 
-const hf = new HfInference('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');
 
-const model = "facebook/wav2vec2-large-960h-lv60-self";
+
+
 
 export default function App() {
+  const [animalType, setAnimalType] = useState('dog')
+  const [animalName, setAnimalName] = useState('Fido')
   const [recording, setRecording] = useState();
+  const [listening, setListening] = useState(false);
   const [textFromSpeech, setTextFromSpeech] = useState('')
-  const [emotion, setEmotion] = useState(null)
+  const [analysis, setAnaylsis] = useState('')
+  const [translation, setTranslation] = useState('')
+  const [response, setResponse] = useState('')
+  const [progress, setProgress] = useState('Waiting...')
   const [loading, setLoading] = useState(false)
   const [clicked, setClicked] = useState(false)
-  const [status, setStatus] = useState({
-    recording: false,
-    convertingSpeechToText: false,
-    analyzingSpeech: false,
-    complete: false
-
-  })
   const scaleValue = useRef(new Animated.Value(1)).current;
 
   const startPulse = () => {
@@ -48,32 +47,40 @@ export default function App() {
 
   const startRecording = async () => {
     try {
+      setProgress('')
+      setResponse('')
       console.log('Requesting permission...')
-      setStatus({...status, recording: true})
+      setListening(true)
       await Audio.requestPermissionsAsync();
       await Audio.setAudioModeAsync({
         allowsRecordingIOS: true,
         playsInSilentModeIOS: true,
       })
 
+      setProgress('Start recording...')
       console.log('Start recording...')
       startPulse();
       const { recording } = await Audio.Recording.createAsync(Audio.RecordingOptionsPresets.HIGH_QUALITY);
       setRecording(recording);
       console.log('Recording started')
+      setProgress('Listening...')
     } catch (error) {
-      setStatus({...status, recording: false})
+      setRecording(false)
+      setListening(false)
       console.error('Failed to start recording', error)
+      setProgress(`Sorry I missed that. Please try again.`)
     }
   }
 
   const stopRecording = async () => {
     try {
       console.log('Stopping recording...')
-      setStatus({...status, recording: false})
+      setProgress('AI working...')
+      setListening(false)
       setClicked(true)
-      // stopPulse();
+      stopPulse();
       setRecording(undefined);
+      setLoading(true)
       await recording.stopAndUnloadAsync();
       await Audio.setAudioModeAsync({
         allowsRecordingIOS: false
@@ -84,105 +91,55 @@ export default function App() {
       const fileInfo = await FileSystem.getInfoAsync(uri)
 
       if(fileInfo.exists){
-        speechAnalysisAndConversionToText(fileInfo)
+        magic(fileInfo)
       }
   
     } catch (error) {
-      setStatus({...status, recording: false})
+      stopPulse();
+      setRecording(false)
+      setListening(false)
+      setLoading(false)
+      setClicked(false)
       console.error('Failed to stop recording', error)
-    }
+      setProgress(`Sorry I missed that. Please try again.`)    }
   }
 
-  const speechAnalysisAndConversionToText = async (fileInfo) => {
+  const magic = async (fileInfo) => {
     try {
-      console.log('Speech to text conversion beginning...')
-      setStatus({...status, conversion: true, recording: false})
-      let speechToText = await hf.automaticSpeechRecognition({
-        model: "facebook/wav2vec2-large-960h-lv60-self",
-        data: fileInfo
-      })
-      console.log('speechToText', speechToText)
+      //anaylsis
+      console.log('Analysis beginning...')
+      setProgress('Analysis and Translation beginning...')
+      const analyzedSpeechResponseObj = await speechAnaylsisAndTranslation(animalType, fileInfo);
+      console.log('analizedSpeechResponse', analyzedSpeechResponseObj)
 
-      console.log('conversational beginning...')
+      setResponse(`${animalName} is ${analyzedSpeechResponseObj.emotion}. '${analyzedSpeechResponseObj.translatedText}', ${animalName} says.`)
 
-      const inputs = {text: speechToText.text}
+      let returnedBlob = textToSpeech(`${animalName} is ${analyzedSpeechResponseObj.emotion}. '${analyzedSpeechResponseObj.translatedText}', ${animalName} says.`)
 
-      const response = await hf.conversational({
-        model: 'microsoft/DialoGPT-large',
-        inputs: inputs,
-      })
+      console.log('returnedBlob: ', returnedBlob)
 
-      console.log('conversational response', response)
+      setLoading(false)
+      setClicked(false)
 
-
-      console.log('Speech anaylsis beginning...')
-      let speechAnaylsis = await hf.audioClassification({
-        model: "superb/hubert-large-superb-er",
-        data: fileInfo
-      })
-      console.log('speechAnaylsis', speechAnaylsis)
-      let highestScore = speechAnaylsis.reduce((prev, current) => {
-        return prev.score > current.score ? prev : current;
-      } )
-      console.log(highestScore)
-
-      setStatus({...status, conversion: false, recording: false})
     } catch (error) {
-      console.error('Failed to convert speech to text', error)
-      setStatus({...status, conversion: false})
+      console.error('Error in magic', error)
+      setLoading(false)
+      setClicked(false)
     }
   }
 
-  const displayResult = () => {
-    setStatus({...status, complete: true})
-  }
-
-  const getEmotion = (emo) => {
-    console.log(emo)
-    let text = '';
-    switch (emo) {
-      case 'ang':
-        text = 'Anger'
-        break;
-      case 'neu':
-        text = 'Neutrality'
-        break;
-      case 'hap':
-        text = 'Happiness'
-        break;
-      case 'sad':
-        text = 'Sadness'
-        break;
-      default:
-        text = 'Confusion'
-        break;
+  const getButtonLabel = () => {
+    if(loading){
+      return 'Loading...'
     }
-    return text;
-  }
-
-  const getButtonText = () => {
-    console.log(status)
-    let text = '';
-    switch (true) {
-      case status.recording:
-        text = 'Stop Recording'
-        break;
-      case status.conversion:
-        text = 'Analyzing Speech'
-        break;
-        case status.complete:
-          text = 'Results: '
-          break;
-    
-      default:
-        text = 'Start Recording'
-        break;
+    else if(listening){
+      return 'Stop'
     }
-
-    return text;
+    else{
+      return 'Start'
+    }
   }
   
-
   return (
     <View style={styles.container}>
       <Pressable disabled={clicked} onPress={recording ? stopRecording : startRecording}>
@@ -197,10 +154,14 @@ export default function App() {
                   borderRadius: 100,
               }}
               >
-                  <Text style={{textAlign: 'center', paddingTop: 90, color: 'aliceblue', fontWeight: 'bold', fontSize: 20}}>{getButtonText()}</Text>
+                  <Text style={{textAlign: 'center', paddingTop: 90, color: 'aliceblue', fontWeight: 'bold', fontSize: 20}}>{getButtonLabel()}</Text>
               </LinearGradient>
         </Animated.View>
       </Pressable>
+      <View>
+        <Text style={{marginTop: 25}}>{progress}</Text>
+        <Text style={{marginTop: 25}}>{response}</Text>
+      </View>
     </View>
   );
 }
