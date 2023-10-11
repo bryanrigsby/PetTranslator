@@ -1,47 +1,12 @@
-import { HfInference } from "@huggingface/inference";
-import {happyDogPhrases, happyCatPhrases, angryDogPhrases, angryCatPhrases, neutralDogPhrases, neutralCatPhrases, sadDogPhrases, sadCatPhrases} from './phrases'
+import {happyDogPhrases, happyCatPhrases, angryDogPhrases, angryCatPhrases, neutralDogPhrases, neutralCatPhrases, sadDogPhrases, sadCatPhrases, emotions} from './phrases'
 
-const hf = new HfInference('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');
-
-
-//models
 
 export const speechAnaylsisAndTranslation = async(animalType, fileInfo) => {
   try {
-    let speechAnaylsis = await hf.audioClassification({
-      model: "superb/hubert-large-superb-er",
-      data: fileInfo
-    })
-    console.log('speechAnaylsis', speechAnaylsis)
-    let highestScore = speechAnaylsis.reduce((prev, current) => {
-      return prev.score > current.score ? prev : current;
-    } )
-    console.log('Highest Score: ', highestScore.label)
-
-
-    let translatedText = await translation(animalType, highestScore.label)
-
-    console.log('translatedText', translatedText)
-
-    return {translatedText: translatedText, emotion: getEmotion(highestScore.label)};
+    let emotion = emotions[getRandom(3)]
+    let translatedText = await translation(animalType, emotion)
+    return {translatedText: translatedText, emotion: getEmotion(emotion)};
   } catch (error) {
-    console.error('Failed to analyize speech', error)
-    return null
-  }
-}
-
-export const textToSpeech = async(phrase) => {
-  try {
-    let blob = await hf.textToSpeech({
-      model: 'espnet/kan-bayashi_ljspeech_vits',
-      inputs: phrase
-    })
-    console.log('blob', blob)
-
-    return blob
-
-  } catch (error) {
-    console.error('Failed to convert text to speech', error)
     return null
   }
 }
@@ -49,23 +14,22 @@ export const textToSpeech = async(phrase) => {
 //helpers
 
 const getEmotion = (emo) => {
-  console.log(emo)
   let text = '';
   switch (emo) {
     case 'ang':
       text = 'angry'
       break;
     case 'neu':
-      text = 'meh'
+      text = 'relaxed'
       break;
     case 'hap':
       text = 'happy'
       break;
     case 'sad':
-      text = 'Sad'
+      text = 'sad'
       break;
     default:
-      text = 'Happy'
+      text = 'happy'
       break;
   }
   return text;
@@ -76,16 +40,6 @@ const getRandom = (multiplier) => {
 }
 
 const translation = async(animalType, emotion) => {
-  console.log('animalType', animalType)
-  console.log('emotion', emotion)
-  console.log('angryDogPhrases.length', angryDogPhrases.length)
-  console.log('happyDogPhrases.length', happyDogPhrases.length)
-  console.log('neutralDogPhrases.length', neutralDogPhrases.length)
-  console.log('sadDogPhrases.length', sadDogPhrases.length)
-  console.log('angryCatPhrases.length', angryCatPhrases.length)
-  console.log('happyCatPhrases.length', happyCatPhrases.length)
-  console.log('neutralCatPhrases.length', neutralCatPhrases.length)
-  console.log('sadCatPhrases.length', sadCatPhrases.length)
   try {
     let returnText = ''
     if(animalType === 'dog'){
@@ -126,10 +80,12 @@ const translation = async(animalType, emotion) => {
           break;
       }
     }
-    console.log('returnText', returnText)
     return returnText
   } catch (error) {
-    console.error('Failed to translate', error)
     return null
   }
+}
+
+export const timeout = (delay) => {
+  return new Promise( res => setTimeout(res, delay) );
 }
